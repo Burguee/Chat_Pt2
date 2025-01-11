@@ -14,16 +14,9 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'))
 })
 
-function sortConnectedUsersByNickname(connectedUsers) {
-    const entries = Array.from(connectedUsers.entries())
-    entries.sort((a, b) => a[1].localeCompare(b[1]))
-    
-    return new Map(entries)
-}
-
 function findIdPerNickname (nickname) {
     for (const [id, user] of connectedUsers.entries()) {
-        if (user === nickname) {
+        if (user.nickname === nickname) {
             return id
         }
     }
@@ -36,42 +29,58 @@ io.on('connection', (socket) => {
 
     console.log(`Um usuário com o id ${socket.id} conectou ao servidor`)
     
-    socket.on('changeNickname', (nickname) => {
-        socket.data.nickname = nickname
-        connectedUsers.set(socket.id, nickname)
-        io.emit('changeNickname', nickname)
-        const sortedUserList = sortConnectedUsersByNickname(connectedUsers)
-        io.emit('existingUsers', Array.from(sortedUserList.values()))
+    socket.on('changeNickname', (userData) => {
+        socket.data.nickname = userData.nickname
+        socket.userColor = userData.color
+        
+        connectedUsers.set(socket.id, {
+            nickname: userData.nickname, 
+            color: userData.color
+        })
+        io.emit('changeNickname', {
+            nickname: userData.nickname,
+            userColor: userData.color
+        })
+        io.emit('existingUsers', Array.from(connectedUsers.values()))
         console.log("connecteds", connectedUsers)
     })
 
     socket.on('getExistingUsers', () => {
-        const sortedUsers = sortConnectedUsersByNickname(connectedUsers)
-        const userList = Array.from(sortedUsers.values())
-        socket.emit('existingUsers', userList)
+        socket.emit('existingUsers', Array.from(connectedUsers.values()))
     })
 
     socket.on('publicMessage', (msg) => {
-        io.emit('publicMessage', msg, socket.data.nickname)
+        io.emit('publicMessage', {
+            message: msg,
+            nickname: socket.data.nickname,
+            color: socket.userColor
+        })
     })
 
-    socket.on('privateMessage', (msg, recivedNickname) => {
+    socket.on('privateMessage', (privateMessageData) => {
+        message = privateMessageData.message
+        recivedNickname = privateMessageData.recivedNickname
         const socketId = findIdPerNickname(recivedNickname)
         if (socketId) {
-            console.log(`o usuario ${socket.data.nickname} enviou a mensagem ${msg} para o usuario ${socketId}`)
-            io.to(socketId).emit('privateMessage', msg, socket.data.nickname)
+            console.log(`o usuario ${socket.data.nickname} enviou a mensagem ${message} para o usuario ${socketId}`)
+            io.to(socketId).emit('privateMessage', {
+                message: message,
+                nickname: socket.data.nickname,
+                color: socket.userColor
+            })
         } else {
-            console.error(`Recipient with nickname "${recivedNickname}" not found`)
+            console.error(`Recived with nickname "${recivedNickname}" not found`)
         }
-        
-        
     })
 
     socket.on('disconnect', () => {
-        const disconnectedNickname = connectedUsers.get(socket.id)
+        const disconnectedUser = connectedUsers.get(socket.id)
         connectedUsers.delete(socket.id)
-        if (disconnectedNickname) {
-            io.emit('userDisconnected', disconnectedNickname)
+        if (disconnectedUser) {
+            io.emit('userDisconnected', {
+                nickname: disconnectedUser.nickname,
+                color: disconnectedUser.color
+            })
         }
         console.log("desconnecteds", connectedUsers)
     })

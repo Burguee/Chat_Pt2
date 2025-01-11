@@ -6,17 +6,23 @@ const messagesDisplay = document.getElementById("messages-display")
 const userNames = document.getElementById("user-names")
 const leaveButton = document.getElementById("leave")
 const allUserList = document.getElementById("allUserList")
+const nicknameColorInput = document.getElementById("nicknameColorInput")
 
 document.getElementById("message-input-area").style.visibility = "hidden"
 let userList = []
 let selectedUser = null
 let nickname = ''
+let selectedColor = ''
+let userColors = {}
 
 function hiddenNickname () {
     nickname = document.getElementById("nickname").value
 
     if (nickname.trim() !== "") {
-        socket.emit("changeNickname", nickname)
+        socket.emit("changeNickname", {
+            nickname: nickname,
+            color: selectedColor
+        })
         document.getElementById("nickname-form-hidden").style.display = "none"
         document.getElementById("message-input-area").style.visibility = "visible"
     } else {
@@ -24,9 +30,10 @@ function hiddenNickname () {
     }
 }
 
-function addUserToList(nickname) {
+function addUserToList(user) {
     const userNamesElement = document.createElement('li')
-    userNamesElement.innerHTML = nickname
+    userNamesElement.innerHTML = user.nickname
+    userNamesElement.style.color = user.color
     userNames.appendChild(userNamesElement)
     userNames.scrollTop = userNames.scrollHeight
 }
@@ -51,8 +58,12 @@ function removeUserFromList(nickname) {
 function sendMessage(message, targetUser = null) {
     if (message.trim() !== "") {
         if (targetUser) {
-            socket.emit('privateMessage', message, targetUser)
-            displayMessage(`<span class="username">Falou para ${targetUser}: </span>${message}`)
+            const targetUserColor = userColors[targetUser]
+            socket.emit('privateMessage', {
+                message: message,
+                recivedNickname: targetUser
+            })
+            displayMessage(`<span class="username">Falou para <span style="color: ${targetUserColor}">${targetUser}</span>: </span>${message}`)
         } else {
             socket.emit('publicMessage', message)
         }
@@ -68,22 +79,23 @@ function leaveChat() {
 
 function updateUIWithUserList(userList) {
     userNames.innerHTML = ""
-    userList.forEach((user) => {
+    userColors = {}
+    const sortedList = [...userList].sort((a, b) => a.nickname.localeCompare(b.nickname))
+    sortedList.forEach((user) => {
+        userColors[user.nickname] = user.color
         addUserToList(user)
     })
 }
+
+nicknameColorInput.addEventListener('change', () => {
+    selectedColor = nicknameColorInput.value
+})
 
 socket.on('connect', () => {
     socket.emit('getExistingUsers')
 })
 
-socket.on('existingUsers', (initialUserList) => {
-    userList = initialUserList
-    updateUIWithUserList(userList)
-})
-
-socket.on('existingUsers', (updatedUserList) => {
-    userList = updatedUserList
+socket.on('existingUsers', (userList) => {
     updateUIWithUserList(userList)
 })
 
@@ -118,20 +130,22 @@ messageInput.addEventListener("keypress", (event) => {
     }
 })
 
-socket.on('publicMessage', (msg, nickname) => {
-    displayMessage(`<span class="username">${nickname}: </span>${msg}`)
+socket.on('publicMessage', (messageData) => {
+    displayMessage(`<span class="username" style="color: ${messageData.color}">${messageData.nickname}</span> falou: ${messageData.message}`)
 })
 
-socket.on('privateMessage', (msg, nickname) => {
-    displayMessage(`<span class="username">Mensagem privada de ${nickname}: </span>${msg}`)
+socket.on('privateMessage', (data) => {
+    console.log(data)
+    displayMessage(`<span class="username">Mensagem privada de <span style="color: ${data.color}">${data.nickname}</span>: </span>${data.message}`)
 })
 
-socket.on('changeNickname', (nickname) => {
-    displayMessage(`<span class="username">${nickname} </span>entrou na sala...`)
-    addUserToList(nickname)
+socket.on('changeNickname', (userData) => {
+    displayMessage(`<span class="username" style="color: ${userData.userColor}">${userData.nickname} </span>entrou na sala...`)
+    addUserToList(userData.nickname, userData.userColor)
 })
 
-socket.on('userDisconnected', (nickname) => {
-    removeUserFromList(nickname)
-    displayMessage(`<span class="username">${nickname} </span>saiu da sala...`)
+socket.on('userDisconnected', (disconnectUserData) => {
+    console.log(disconnectUserData)
+    removeUserFromList(disconnectUserData.nickname)
+    displayMessage(`<span class="username" style="color: ${disconnectUserData.color}">${disconnectUserData.nickname} </span>saiu da sala...`)
 })
